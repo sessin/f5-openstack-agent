@@ -51,12 +51,19 @@ class BigipTenantManager(object):
         for bigip in self.driver.get_config_bigips():
             if not self.system_helper.folder_exists(bigip, folder_name):
                 folder = self.service_adapter.get_folder(service)
+                # What about checking for success?  If create folder
+                # return control to caller.
                 self.system_helper.create_folder(bigip, folder)
 
         # folder must sync before route domains are created.
         self.driver.sync_if_clustered()
 
-        # create tenant route domain
+        # What about verifying the condition before proceeding.  How do
+        # we verify if this is sync'd?
+
+        # create tenant route domain.  If global routed mode is false and
+        # use_namespaces is false, what does that mean?  Withoud namespaces
+        # you cannot have overlapping IP addresses.
         if self.conf.use_namespaces:
             for bigip in self.driver.get_all_bigips():
                 if not self.network_helper.route_domain_exists(bigip,
@@ -88,6 +95,8 @@ class BigipTenantManager(object):
         partition = self.service_adapter.get_folder_name(tenant_id)
         domain_names = self.network_helper.get_route_domain_names(bigip,
                                                                   partition)
+        # Make sure the route domain is deleted before proceeding,
+        # if this call fails, retry and log error(at a minimum).
         if domain_names:
             for domain_name in domain_names:
                 self.network_helper.delete_route_domain(bigip,
@@ -95,15 +104,21 @@ class BigipTenantManager(object):
                                                         domain_name)
         # sudslog = std_logging.getLogger('suds.client')
         # sudslog.setLevel(std_logging.FATAL)
+        # This should probably be deleted b/c it is cleaning up
+        # SOAP context.  Ask the J-man.
         self.system_helper.force_root_folder(bigip)
         # sudslog.setLevel(std_logging.ERROR)
 
         try:
             self.system_helper.delete_folder(bigip, partition)
         except f5ex.SystemDeleteException:
+            # Log Warning.
+            LOG.warning("Failed to delete folder, purging contents")
             self.system_helper.purge_folder_contents(bigip, partition)
             self.system_helper.delete_folder(bigip, partition)
 
+    # We need to poll every entity before resuming to ensure removal of
+    # objects.
     def _remove_tenant_autosync_mode(self, bigip, tenant_id):
         partition = self.service_adapter.get_folder_name(tenant_id)
 
@@ -112,11 +127,13 @@ class BigipTenantManager(object):
         # the folder or it won't delete due to not being empty
         for set_bigip in self.driver.get_all_bigips():
             self.network_helper.delete_route_domain(set_bigip, partition, None)
+
+            # REMOVE(RJB)
             sudslog = std_logging.getLogger('suds.client')
             sudslog.setLevel(std_logging.FATAL)
             self.system_helper.force_root_folder(set_bigip)
             sudslog.setLevel(std_logging.ERROR)
-
+        
         # we need to ensure that the following folder deletion
         # is clearly the last change that needs to be synced.
         self.driver.sync_if_clustered()

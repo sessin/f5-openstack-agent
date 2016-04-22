@@ -44,6 +44,7 @@ class BigipSnatManager(object):
             return 'snat-traffic-group-local-only-' + subnet['id']
         elif self.driver.conf.f5_ha_type == 'pair':
             # REVISIT(RJB): should this name have a hyphen before subnetid
+            # Why is this called '1' vs. 'local-only'?
             return 'snat-traffic-group-1' + subnet['id']
         elif self.driver.conf.f5_ha_type == 'scalen':
             traffic_group = self.driver.tenant_to_traffic_group(tenant_id)
@@ -85,8 +86,12 @@ class BigipSnatManager(object):
                     mac_address=None,
                     name=index_snat_name,
                     fixed_address_count=1)
+                # Check that new_port is not None.
                 ip_address = new_port['fixed_ips'][0]['ip_address']
+
+            # if ip address != "", append
             snat_addrs.append(ip_address)
+
         return snat_addrs
 
     def assure_bigip_snats(self, bigip, subnetinfo, snat_addrs, tenant_id):
@@ -103,6 +108,7 @@ class BigipSnatManager(object):
                 self.driver.service_adapter.get_folder_name(tenant_id)
             )
 
+        # Should the pool_name be distinguished from the pool folder???
         snat_info['pool_name'] = self.driver.service_adapter.get_folder_name(
             tenant_id
         )
@@ -124,6 +130,10 @@ class BigipSnatManager(object):
             return
 
         snat_name = self._get_snat_name(subnet, tenant_id)
+        # if for some reason we could not allocate a snat and append to the
+        # list, then the snat_info['addrs'] length will not be equal to
+        # f5_snat_addressed_per subnet.  So we should check these lengths
+        # and report error in the log.
         for i in range(self.driver.conf.f5_snat_addresses_per_subnet):
             ip_address = snat_info['addrs'][i] + \
                 '%' + str(network['route_domain_id'])
@@ -150,6 +160,9 @@ class BigipSnatManager(object):
                     name=index_snat_name,
                     partition=snat_info['network_folder']):
                 LOG.debug("Calling SNAT translation manager CREATE.")
+                # Try and catch exception here.  If we can't create
+                # a translation manger then we ought not need to create the
+                # pool?
                 self.snat_translation_manager.create(bigip, model)
             else:
                 LOG.debug("SNAT translation_manager LOAD")
@@ -187,6 +200,8 @@ class BigipSnatManager(object):
                 self.l3_binding.bind_address(subnet_id=subnet['id'],
                                              ip_address=ip_address)
 
+        # Following the pattern we should have a flag that indicates that
+        # all succeeded before appending to the list.
         bigip.assured_tenant_snat_subnets[tenant_id].append(subnet['id'])
 
     def delete_bigip_snats(self, bigip, subnetinfo, tenant_id):
@@ -220,6 +235,8 @@ class BigipSnatManager(object):
                 'Tenant id %s does not exist in '
                 'bigip.assured_tenant_snat_subnets' % tenant_id)
 
+    # This function returns a set object.  Let's be a little more targeted
+    # on what we want to log.
     def _delete_bigip_snats(self, bigip, subnetinfo, tenant_id):
         # Assure snats deleted in standalone mode """
         network = subnetinfo['network']
@@ -227,6 +244,7 @@ class BigipSnatManager(object):
         partition = self.driver.service_adapter.get_folder_name(tenant_id)
         deleted_names = set()
         in_use_subnets = set()
+
         # Delete SNATs on traffic-group-local-only
         snat_name = self._get_snat_name(subnet, tenant_id)
         for i in range(self.driver.conf.f5_snat_addresses_per_subnet):
@@ -234,6 +252,7 @@ class BigipSnatManager(object):
             if self.l2_service.is_common_network(network):
                 tmos_snat_name = '/Common/' + index_snat_name
             else:
+                # The common case uses a folder name and this does not.  Why?
                 tmos_snat_name = index_snat_name
 
             if self.l3_binding:
@@ -244,7 +263,8 @@ class BigipSnatManager(object):
                         subnet_id=subnet['id'], ip_address=snat_xlate.address)
                 except HTTPError as err:
                     LOG.error("Load SNAT xlate failed %s" % err.message)
-
+                # Try to catch general exception if unbind_address raises.
+                
             # Remove translation address from tenant snat pool
             # This seems strange that name and partition are tenant_id
             # but that is what the v1 code was doing.
@@ -259,6 +279,7 @@ class BigipSnatManager(object):
                                                       index_snat_name,
                                                       partition)
 
+                # members that are not in the common partition
                 snatpool.members = [
                     member for member in snatpool.members
                     if os.path.basename(member) != tmos_snat_name

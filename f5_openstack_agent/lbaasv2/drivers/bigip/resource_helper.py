@@ -77,6 +77,10 @@ class BigIPResourceHelper(object):
 
         return resource
 
+    # This might raise an exception other than 404, so
+    # we should catch and return false.  Make sure that the
+    # SDK is return True or False and does not emit an exception.
+    # try : except here to capture any unknown-unknowns.  Thanks R.
     def exists(self, bigip, name=None, partition=None):
         """Test for the existence of a resource."""
         resource = self._resource(bigip)

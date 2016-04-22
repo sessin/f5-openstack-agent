@@ -168,7 +168,9 @@ class NetworkHelper(object):
                       "message: %s." % (name,
                                         err.response.status_code,
                                         err.message))
-
+        # Try to catch exception Exception here.  This should return true
+        # or False.
+        
     @log_helpers.log_method_call
     def route_domain_exists(self, bigip, partition=const.DEFAULT_PARTITION,
                             domain_id=None):

@@ -20,16 +20,19 @@ LOG = logging.getLogger(__name__)
 
 class SystemHelper(object):
 
+    # In general, we need to catch exceptions (return folder.exists)
     def create_folder(self, bigip, folder):
         f = bigip.sys.folders.folder
         f.create(**folder)
 
+    # Check for exception and return folder.exists
     def delete_folder(self, bigip, folder_name):
         f = bigip.sys.folders.folder
         if f.exists(name=folder_name):
             f.load(name=folder_name)
             f.delete()
 
+    # Catch exception.  Maybe define BigIPFolderNotFound.
     def folder_exists(self, bigip, folder):
         if folder == 'Common':
             return True
@@ -59,6 +62,7 @@ class SystemHelper(object):
         return version
 
     def get_version(self, bigip):
+        # Handle an exception here.
         devices = bigip.cm.devices.get_collection()
         for device in devices:
             if device.selfDevice == 'true':
@@ -67,6 +71,7 @@ class SystemHelper(object):
         return ""
 
     def get_serial_number(self, bigip):
+        # Handle exception here
         devices = bigip.cm.devices.get_collection()
         for device in devices:
             if device.selfDevice == 'true':
@@ -74,9 +79,12 @@ class SystemHelper(object):
 
         return None
 
+    # Investigate what REST API calls can be made to
+    # determine platform ID.  Is this VCMP?
     def get_platform(self, bigip):
         return ''
 
+    # Handle exception.
     def get_tunnel_sync(self, bigip):
         db = bigip.sys.dbs.db.load(name='iptunnel.configsync')
         if hasattr(db, 'value'):
@@ -120,6 +128,7 @@ class SystemHelper(object):
     def purge_orphaned_folders(self, bigip):
         pass
 
+    # Is this residual SOAP functionality?  
     def force_root_folder(self, bigip):
         pass
 
